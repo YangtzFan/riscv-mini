@@ -1,76 +1,50 @@
-# riscv-mini
+# riscv-mini RTL
 
-Author: Donggyu Kim (dgkim@eecs.berkeley.edu)
+This repository contains the riscv-mini Chisel hardware sources and their
+SystemVerilog generation flow, following the ChiselTemplate project layout.
+The processor implements RV32I with instruction and data caches. The generated
+top-level module is `Tile`.
 
-`riscv-mini` is a simple RISC-V 3-stage pipeline written in Chisel. It has been a crucial example in various project developments,
-including [Chisel3](https://github.com/ucb-bar/chisel3.git), [FIRRTL](https://github.com/ucb-bar/firrtl.git),
-[Strober](https://bar.eecs.berkeley.edu/projects/strober.html), simulation and verification methodologies.
-It implements RV32I of the User-level ISA Version 2.0 and the Machine-level ISA of the Privileged Architecture Version 1.7.
-Unlike other simple pipelines, it also contains simple instruction and data caches.
+## Build
 
-Note that a real-world processor is not the goal of `riscv-mini`.
-It is developed as an intermediate example before diving into [rocket-chip](https://github.com/freechipsproject/rocket-chip). 
+The tool versions match ChiselTemplate:
 
-## Datapath Diagram
-![pipeline](diagram.png)
+- Mill 1.0.6 (`.mill-version`)
+- Scala 2.13.18
+- Chisel 7.9.0, including the matching compiler plugin
 
-## Getting Started
+Generate split SystemVerilog with Mill:
 
-    $ git clone https://github.com/ucb-bar/riscv-mini.git
-    $ cd riscv-mini
-    $ make            # generate firrtl & verilog files in generated-src
-    
-The verilog output file can be used for verilator simulation or the ASIC tool flow.
-    
-## Running Verilator Simulation
+```bash
+mill -i riscvMini.runMain mini.Main \
+  --target systemverilog --split-verilog -td build/rtl
+```
 
-First, generate the verilator binary:
+Or use the xmake wrapper:
 
-    $ make verilator
-    
-This will generate `VTile` in the top-level directory.
+```bash
+xmake r rtl
+```
 
-Now, you can run verilator simulation for a given hex file as follows:
+`xmake r clean` removes `build/`. Mill's own cache is in `out/`.
 
-    $ ./VTile <hex file> [<vcd file> 2> <log file>]
-    
-`<vcd file>` and the pipe to `<log file>` are optional. The waveform is dumped to `dump.vcd` and the execution trace is printed in the screen by default.
+## Layout
 
-The following command runs the whole test hex files in verilator and dumps the traces and the waveforms to the 'outputs' directory:
+```text
+.
+├── .mill-version
+├── .scalafmt.conf
+├── build.sc
+├── xmake.lua
+├── LICENSE
+└── src/main/scala/
+    ├── junctions/nasti.scala
+    └── mini/                 # Core, caches, Tile, and mini.Main generator
+```
 
-    $ make run-tests
+Simulation environments, stimulus, program images, and checkers belong in the
+parent verification project. This repository has no Scala test target, C++
+simulator, benchmark programs, or verification toolchain setup scripts.
 
-## Unit and Integration Tests with `sbt`
-
-`riscv-mini` provides synthesizable unit & integration tests.
-Theres are six sets of unit tests(`ALUTests`, `BrCondTests`, `ImmGenTests`, `CSRTests`, `CacheTests`, `DatapathTests`),
-running user-defined test vectors.
-To execute them, first launch sbt with `make sbt` and run:
-
-    > testOnly mini.[testname]
-  
-There are also six sets of integration tests, running the hex files from [riscv-tests](https://github.com/riscv/riscv-tests).
-To execute them, also launch `sbt` and run:
-
-    > testOnly mini.[Core|Tile][Simple|ISA|Bmark]Tests
-    
-`Core` only contains the datapath and the control unit, while `Tile` also contains I$ and D$. `Simple` only runs `rv32ui-p-simple`,
-`ISA` runs the whole ISA tests, and `Bmark` runs five benchmarks(`median`, `multiply`, `qsort`, `towers`, `vvadd`). 
-Note that all tests in a set run in parallel.
-
-Finally, to run all the tests, just in sbt:
-
-    > test
-    
-## Running Your Own Program on `riscv-mini`
-
-At this point, you may want to implement and exeucte your custom application on `riscv-mini`. In this case, you need to install RISC-V tools for priv 1.7. This repo provides a script to install the correct version of tools. Run the script as follows:
-
-    $ export RISCV=<path to riscv tools for priv 1.7>
-    $ ./build-riscv-tools
-    
-It takes a while to install the toolchain, so please be patient.
-
-This repo also provides a template for your own program in `custom-bmark`. Add your c or assembly code and edit `Makefile`. Next, to compile you program, run `make` in `custom-bmark` to generate the binary, dump, and the hex files. Finally, run the following command in the base directory:
-
-    $ make run-custom-bmark
+Original riscv-mini author: Donggyu Kim (dgkim@eecs.berkeley.edu).
+See `LICENSE` for the retained upstream license.
