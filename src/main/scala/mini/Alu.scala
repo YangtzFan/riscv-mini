@@ -6,26 +6,30 @@ import chisel3._
 import chisel3.util._
 
 object Alu {
-  val ALU_ADD = 0.U(4.W)
-  val ALU_SUB = 1.U(4.W)
-  val ALU_AND = 2.U(4.W)
-  val ALU_OR = 3.U(4.W)
-  val ALU_XOR = 4.U(4.W)
-  val ALU_SLT = 5.U(4.W)
-  val ALU_SLL = 6.U(4.W)
-  val ALU_SLTU = 7.U(4.W)
-  val ALU_SRL = 8.U(4.W)
-  val ALU_SRA = 9.U(4.W)
-  val ALU_COPY_A = 10.U(4.W)
-  val ALU_COPY_B = 11.U(4.W)
-  val ALU_MUL = 12.U(4.W)
-  val ALU_XXX = 15.U(4.W)
+  val ALU_ADD = 0.U(5.W)
+  val ALU_SUB = 1.U(5.W)
+  val ALU_AND = 2.U(5.W)
+  val ALU_OR = 3.U(5.W)
+  val ALU_XOR = 4.U(5.W)
+  val ALU_SLT = 5.U(5.W)
+  val ALU_SLL = 6.U(5.W)
+  val ALU_SLTU = 7.U(5.W)
+  val ALU_SRL = 8.U(5.W)
+  val ALU_SRA = 9.U(5.W)
+  val ALU_COPY_A = 10.U(5.W)
+  val ALU_COPY_B = 11.U(5.W)
+  // Multiply opcodes: bit 4 = 1, bit 3 = 0, bits 2:0 = funct3.
+  val ALU_MUL = 16.U(5.W)
+  val ALU_MULH = 17.U(5.W)
+  val ALU_MULHSU = 18.U(5.W)
+  val ALU_MULHU = 19.U(5.W)
+  val ALU_XXX = 15.U(5.W)
 }
 
 class AluIO(width: Int) extends Bundle {
   val A = Input(UInt(width.W))
   val B = Input(UInt(width.W))
-  val alu_op = Input(UInt(4.W))
+  val alu_op = Input(UInt(5.W))
   val out = Output(UInt(width.W))
   val sum = Output(UInt(width.W))
 }
@@ -103,15 +107,15 @@ class AluArea(val width: Int) extends Alu {
 }
 
 // Adds the low-width MUL result without duplicating the existing ALU operations.
-class AluMul(val width: Int) extends Alu {
+class AluMul(val width: Int, is_area: Boolean = true) extends Alu {
   val io = IO(new AluIO(width))
-  val base = Module(new AluArea(width))
+  val base_alu = if (is_area) Module(new AluArea(width)) else Module(new AluSimple(width))
 
-  base.io.A := io.A
-  base.io.B := io.B
-  base.io.alu_op := io.alu_op
+  base_alu.io.A := io.A
+  base_alu.io.B := io.B
+  base_alu.io.alu_op := io.alu_op
 
   val product = io.A * io.B
-  io.out := Mux(io.alu_op === ALU_MUL, product(width - 1, 0), base.io.out)
-  io.sum := base.io.sum
+  io.out := Mux(io.alu_op(4, 2) === "b100".U, product(width - 1, 0), base_alu.io.out)
+  io.sum := base_alu.io.sum
 }
