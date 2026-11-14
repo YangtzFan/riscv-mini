@@ -106,16 +106,49 @@ class AluArea(val width: Int) extends Alu {
   io.sum := sum
 }
 
-// Adds the low-width MUL result without duplicating the existing ALU operations.
+// Combinational unsigned multiplication using shifted partial products.
+class Multiplier(val width: Int) extends Module {
+  require(width > 0)
+
+  val io = IO(new Bundle {
+    val A = Input(UInt(width.W))
+    val B = Input(UInt(width.W))
+    val out = Output(UInt((width + width).W))
+  })
+
+  val fullWidth = width + width
+  val extendedA = Cat(0.U(width.W), io.A)
+  val partialProducts = (0 until width).map { bit =>
+    val shiftedA = (extendedA << bit)(fullWidth - 1, 0)
+    Mux(io.B(bit), shiftedA, 0.U(fullWidth.W))
+  }
+  io.out := partialProducts.reduce(_ + _)
+}
+
+// Adds RV32M multiply results without duplicating the existing ALU operations.
 class AluMul(val width: Int, is_area: Boolean = true) extends Alu {
   val io = IO(new AluIO(width))
   val base_alu = if (is_area) Module(new AluArea(width)) else Module(new AluSimple(width))
+  val multiplier = Module(new Multiplier(width))
 
   base_alu.io.A := io.A
   base_alu.io.B := io.B
   base_alu.io.alu_op := io.alu_op
+  multiplier.io.A := io.A
+  multiplier.io.B := io.B
 
-  val product = io.A * io.B
-  io.out := Mux(io.alu_op(4, 2) === "b100".U, product(width - 1, 0), base_alu.io.out)
+  val product = multiplier.io.out
+  val highUnsigned = product(width + width - 1, width)
+  val highSignedUnsigned = highUnsigned - Mux(io.A(width - 1), io.B, 0.U(width.W))
+  val highSigned = highSignedUnsigned - Mux(io.B(width - 1), io.A, 0.U(width.W))
+
+  io.out := MuxLookup(io.alu_op, base_alu.io.out)(
+    Seq(
+      ALU_MUL -> product(width - 1, 0),
+      ALU_MULH -> highSigned,
+      ALU_MULHSU -> highSignedUnsigned,
+      ALU_MULHU -> highUnsigned
+    )
+  )
   io.sum := base_alu.io.sum
 }
