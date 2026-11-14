@@ -36,7 +36,7 @@ class AluIO(width: Int) extends Bundle {
 
 import mini.Alu._
 
-trait Alu extends Module {
+trait Alu extends RawModule {
   def width: Int
   val io: AluIO
 }
@@ -107,7 +107,7 @@ class AluArea(val width: Int) extends Alu {
 }
 
 // Combinational unsigned multiplication using shifted partial products.
-class Multiplier(val width: Int) extends Module {
+class Multiplier(val width: Int) extends RawModule {
   require(width > 0)
 
   val io = IO(new Bundle {
