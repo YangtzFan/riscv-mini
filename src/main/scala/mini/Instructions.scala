@@ -70,6 +70,8 @@ object Instructions {
   def EBREAK = BitPat("b00000000000100000000000001110011")
   def ERET = BitPat("b00010000000000000000000001110011")
   def WFI = BitPat("b00010000001000000000000001110011")
+  // Temp Matrix Multiplier
+  def MAMUL = BitPat("b?????????????????????????1111111")
 
   def NOP = BitPat.bitPatToUInt(BitPat("b00000000000000000000000000010011"))
 }

@@ -125,7 +125,8 @@ object Control {
     ECALL -> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_CSR, N, CSR.P, N),
     EBREAK-> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_CSR, N, CSR.P, N),
     ERET  -> List(PC_EPC, A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, Y, ST_XXX, LD_XXX, WB_CSR, N, CSR.P, N),
-    WFI   -> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, N, CSR.N, N))
+    WFI   -> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, N, CSR.N, N),
+    MAMUL -> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, N, CSR.N, N))
   // format: on
 }
 
@@ -144,6 +145,7 @@ class ControlSignals extends Bundle {
   val wb_en = Output(Bool())
   val csr_cmd = Output(UInt(3.W))
   val illegal = Output(Bool())
+  val is_mamul = Output(Bool())
 }
 
 class Control extends Module {
@@ -168,4 +170,5 @@ class Control extends Module {
   io.wb_en := ctrlSignals(10).asBool
   io.csr_cmd := ctrlSignals(11)
   io.illegal := ctrlSignals(12)
+  io.is_mamul := Instructions.MAMUL === io.inst
 }
