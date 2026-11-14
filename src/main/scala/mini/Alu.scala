@@ -6,32 +6,37 @@ import chisel3._
 import chisel3.util._
 
 object Alu {
-  val ALU_ADD = 0.U(4.W)
-  val ALU_SUB = 1.U(4.W)
-  val ALU_AND = 2.U(4.W)
-  val ALU_OR = 3.U(4.W)
-  val ALU_XOR = 4.U(4.W)
-  val ALU_SLT = 5.U(4.W)
-  val ALU_SLL = 6.U(4.W)
-  val ALU_SLTU = 7.U(4.W)
-  val ALU_SRL = 8.U(4.W)
-  val ALU_SRA = 9.U(4.W)
-  val ALU_COPY_A = 10.U(4.W)
-  val ALU_COPY_B = 11.U(4.W)
-  val ALU_XXX = 15.U(4.W)
+  val ALU_ADD = 0.U(5.W)
+  val ALU_SUB = 1.U(5.W)
+  val ALU_AND = 2.U(5.W)
+  val ALU_OR = 3.U(5.W)
+  val ALU_XOR = 4.U(5.W)
+  val ALU_SLT = 5.U(5.W)
+  val ALU_SLL = 6.U(5.W)
+  val ALU_SLTU = 7.U(5.W)
+  val ALU_SRL = 8.U(5.W)
+  val ALU_SRA = 9.U(5.W)
+  val ALU_COPY_A = 10.U(5.W)
+  val ALU_COPY_B = 11.U(5.W)
+  // Multiply opcodes: bit 4 = 1, bit 3 = 0, bits 2:0 = funct3.
+  val ALU_MUL = 16.U(5.W)
+  val ALU_MULH = 17.U(5.W)
+  val ALU_MULHSU = 18.U(5.W)
+  val ALU_MULHU = 19.U(5.W)
+  val ALU_XXX = 15.U(5.W)
 }
 
 class AluIO(width: Int) extends Bundle {
   val A = Input(UInt(width.W))
   val B = Input(UInt(width.W))
-  val alu_op = Input(UInt(4.W))
+  val alu_op = Input(UInt(5.W))
   val out = Output(UInt(width.W))
   val sum = Output(UInt(width.W))
 }
 
 import mini.Alu._
 
-trait Alu extends Module {
+trait Alu extends RawModule {
   def width: Int
   val io: AluIO
 }
@@ -99,4 +104,51 @@ class AluArea(val width: Int) extends Alu {
 
   io.out := out
   io.sum := sum
+}
+
+// Combinational unsigned multiplication using shifted partial products.
+class Multiplier(val width: Int) extends RawModule {
+  require(width > 0)
+
+  val io = IO(new Bundle {
+    val A = Input(UInt(width.W))
+    val B = Input(UInt(width.W))
+    val out = Output(UInt((width + width).W))
+  })
+
+  val fullWidth = width + width
+  val extendedA = Cat(0.U(width.W), io.A)
+  val partialProducts = (0 until width).map { bit =>
+    val shiftedA = (extendedA << bit)(fullWidth - 1, 0)
+    Mux(io.B(bit), shiftedA, 0.U(fullWidth.W))
+  }
+  io.out := partialProducts.reduce(_ + _)
+}
+
+// Adds RV32M multiply results without duplicating the existing ALU operations.
+class AluMul(val width: Int, is_area: Boolean = true) extends Alu {
+  val io = IO(new AluIO(width))
+  val base_alu = if (is_area) Module(new AluArea(width)) else Module(new AluSimple(width))
+  val multiplier = Module(new Multiplier(width))
+
+  base_alu.io.A := io.A
+  base_alu.io.B := io.B
+  base_alu.io.alu_op := io.alu_op
+  multiplier.io.A := io.A
+  multiplier.io.B := io.B
+
+  val product = multiplier.io.out
+  val highUnsigned = product(width + width - 1, width)
+  val highSignedUnsigned = highUnsigned - Mux(io.A(width - 1), io.B, 0.U(width.W))
+  val highSigned = highSignedUnsigned - Mux(io.B(width - 1), io.A, 0.U(width.W))
+
+  io.out := MuxLookup(io.alu_op, base_alu.io.out)(
+    Seq(
+      ALU_MUL -> product(width - 1, 0),
+      ALU_MULH -> highSigned,
+      ALU_MULHSU -> highSignedUnsigned,
+      ALU_MULHU -> highUnsigned
+    )
+  )
+  io.sum := base_alu.io.sum
 }

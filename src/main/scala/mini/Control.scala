@@ -102,6 +102,10 @@ object Control {
     SRAI  -> List(PC_4  , A_RS1,  B_IMM, IMM_I, ALU_SRA   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
     ADD   -> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_ADD   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
     SUB   -> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_SUB   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
+    MUL   -> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_MUL   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
+    MULH  -> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_MULH  , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
+    MULHSU-> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_MULHSU, BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
+    MULHU -> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_MULHU , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
     SLL   -> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_SLL   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
     SLT   -> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_SLT   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
     SLTU  -> List(PC_4  , A_RS1,  B_RS2, IMM_X, ALU_SLTU  , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, Y, CSR.N, N),
@@ -121,7 +125,8 @@ object Control {
     ECALL -> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_CSR, N, CSR.P, N),
     EBREAK-> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_CSR, N, CSR.P, N),
     ERET  -> List(PC_EPC, A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, Y, ST_XXX, LD_XXX, WB_CSR, N, CSR.P, N),
-    WFI   -> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, N, CSR.N, N))
+    WFI   -> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, N, CSR.N, N),
+    MAMUL -> List(PC_4  , A_XXX,  B_XXX, IMM_X, ALU_XXX   , BR_XXX, N, ST_XXX, LD_XXX, WB_ALU, N, CSR.N, N))
   // format: on
 }
 
@@ -132,7 +137,7 @@ class ControlSignals extends Bundle {
   val A_sel = Output(UInt(1.W))
   val B_sel = Output(UInt(1.W))
   val imm_sel = Output(UInt(3.W))
-  val alu_op = Output(UInt(4.W))
+  val alu_op = Output(UInt(5.W))
   val br_type = Output(UInt(3.W))
   val st_type = Output(UInt(2.W))
   val ld_type = Output(UInt(3.W))
@@ -140,6 +145,7 @@ class ControlSignals extends Bundle {
   val wb_en = Output(Bool())
   val csr_cmd = Output(UInt(3.W))
   val illegal = Output(Bool())
+  val is_mamul = Output(Bool())
 }
 
 class Control extends Module {
@@ -164,4 +170,5 @@ class Control extends Module {
   io.wb_en := ctrlSignals(10).asBool
   io.csr_cmd := ctrlSignals(11)
   io.illegal := ctrlSignals(12)
+  io.is_mamul := Instructions.MAMUL === io.inst
 }

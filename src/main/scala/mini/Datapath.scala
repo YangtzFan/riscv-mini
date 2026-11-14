@@ -28,12 +28,15 @@ class ExecuteWritebackPipelineRegister(xlen: Int) extends Bundle {
   val pc = UInt(xlen.W)
   val alu = UInt(xlen.W)
   val csr_in = UInt(xlen.W)
+  val matrixResult = Vec(10, UInt(xlen.W))
+  val matrixWbValid = Bool()
 }
 
 class Datapath(val conf: CoreConfig) extends Module {
   val io = IO(new DatapathIO(conf.xlen))
   val csr = Module(new CSR(conf.xlen))
   val regFile = Module(new RegFile(conf.xlen))
+  val matrixMul = Module(new MatrixMultiplier(2, 3, 5, conf.xlen))
   val alu = Module(conf.makeAlu(conf.xlen))
   val immGen = Module(conf.makeImmGen(conf.xlen))
   val brCond = Module(conf.makeBrCond(conf.xlen))
@@ -58,7 +61,8 @@ class Datapath(val conf: CoreConfig) extends Module {
       _.inst -> Instructions.NOP,
       _.pc -> 0.U,
       _.alu -> 0.U,
-      _.csr_in -> 0.U
+      _.csr_in -> 0.U,
+      _.matrixWbValid -> false.B
     )
   )
 
@@ -150,6 +154,7 @@ class Datapath(val conf: CoreConfig) extends Module {
     st_type := 0.U
     ld_type := 0.U
     wb_en := false.B
+    ew_reg.matrixWbValid := false.B
     csr_cmd := 0.U
     illegal := false.B
     pc_check := false.B
@@ -162,6 +167,12 @@ class Datapath(val conf: CoreConfig) extends Module {
     ld_type := io.ctrl.ld_type
     wb_sel := io.ctrl.wb_sel
     wb_en := io.ctrl.wb_en
+    ew_reg.matrixWbValid := io.ctrl.is_mamul
+    when(io.ctrl.is_mamul) {
+      for (i <- 0 until 2; j <- 0 until 5) {
+        ew_reg.matrixResult(i * 5 + j) := matrixMul.io.C(i)(j)
+      }
+    }
     csr_cmd := io.ctrl.csr_cmd
     illegal := io.ctrl.illegal
     pc_check := io.ctrl.pc_sel === PC_ALU
@@ -198,9 +209,25 @@ class Datapath(val conf: CoreConfig) extends Module {
       Seq(WB_MEM -> load, WB_PC4 -> (ew_reg.pc + 4.U).zext, WB_CSR -> csr.io.out.zext)
     ).asUInt
 
-  regFile.io.wen := wb_en && !stall && !csr.io.expt
+  val scalarWbCommit = wb_en && !stall && !csr.io.expt
+  def matrixOperand(regAddr: Int, stored: UInt): UInt =
+    Mux(scalarWbCommit && (wb_rd_addr === regAddr.U(5.W)), regWrite, stored)
+
+  // Forward a simultaneous scalar writeback into the fixed A/B register layout.
+  for (i <- 0 until 2; k <- 0 until 3) {
+    val index = i * 3 + k
+    matrixMul.io.A(i)(k) := matrixOperand(1 + index, regFile.matrix.a(index))
+  }
+  for (k <- 0 until 3; j <- 0 until 5) {
+    val index = k * 5 + j
+    matrixMul.io.B(k)(j) := matrixOperand(7 + index, regFile.matrix.b(index))
+  }
+
+  regFile.io.wen := scalarWbCommit
   regFile.io.waddr := wb_rd_addr
   regFile.io.wdata := regWrite
+  regFile.matrix.c := ew_reg.matrixResult
+  regFile.matrix.valid := ew_reg.matrixWbValid && !stall && !csr.io.expt
 
   // Abort store when there's an excpetion
   io.dcache.abort := csr.io.expt
