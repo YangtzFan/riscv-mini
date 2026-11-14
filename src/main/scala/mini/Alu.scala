@@ -18,6 +18,7 @@ object Alu {
   val ALU_SRA = 9.U(4.W)
   val ALU_COPY_A = 10.U(4.W)
   val ALU_COPY_B = 11.U(4.W)
+  val ALU_MUL = 12.U(4.W)
   val ALU_XXX = 15.U(4.W)
 }
 
@@ -99,4 +100,18 @@ class AluArea(val width: Int) extends Alu {
 
   io.out := out
   io.sum := sum
+}
+
+// Adds the low-width MUL result without duplicating the existing ALU operations.
+class AluMul(val width: Int) extends Alu {
+  val io = IO(new AluIO(width))
+  val base = Module(new AluArea(width))
+
+  base.io.A := io.A
+  base.io.B := io.B
+  base.io.alu_op := io.alu_op
+
+  val product = io.A * io.B
+  io.out := Mux(io.alu_op === ALU_MUL, product(width - 1, 0), base.io.out)
+  io.sum := base.io.sum
 }
