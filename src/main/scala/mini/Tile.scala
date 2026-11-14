@@ -93,6 +93,78 @@ class MemArbiter(params: NastiBundleParameters) extends Module {
   }
 }
 
+class CoreBridgeIO(nastiParams: NastiBundleParameters, xlen: Int) extends Bundle {
+  val cpu = new CacheIO(xlen, xlen)
+  val nasti = new NastiBundle(nastiParams)
+}
+
+object CoreBridgeState extends ChiselEnum {
+  val sIdle, sReadAddress, sReadData, sWriteAddress, sWriteData, sWriteResponse = Value
+}
+
+class CoreBridge(nastiParams: NastiBundleParameters, xlen: Int) extends Module {
+  require(xlen % 8 == 0 && isPow2(xlen / 8))
+  require(nastiParams.dataBits >= xlen && nastiParams.dataBits % xlen == 0)
+
+  val io = IO(new CoreBridgeIO(nastiParams, xlen))
+  import CoreBridgeState._
+
+  val state = RegInit(sIdle)
+  val addr = Reg(UInt(xlen.W))
+  val data = Reg(UInt(xlen.W))
+  val mask = Reg(UInt((xlen / 8).W))
+  val readData = RegInit(0.U(xlen.W))
+  val beatBytes = nastiParams.dataBits / 8
+  val offset = if (beatBytes == 1) 0.U else addr(log2Ceil(beatBytes) - 1, 0)
+  val bitOffset = Cat(offset, 0.U(3.W))
+
+  // The CPU accepts a new request only while both memory ports report ready.
+  io.cpu.resp.valid := state === sIdle
+  io.cpu.resp.bits.data := readData
+
+  io.nasti.ar.bits := NastiAddressBundle(nastiParams)(0.U, addr, log2Ceil(xlen / 8).U)
+  io.nasti.ar.valid := state === sReadAddress
+  io.nasti.r.ready := state === sReadData
+
+  io.nasti.aw.bits := NastiAddressBundle(nastiParams)(0.U, addr, log2Ceil(xlen / 8).U)
+  io.nasti.aw.valid := state === sWriteAddress
+  io.nasti.w.bits := NastiWriteDataBundle(nastiParams)(
+    (data.pad(nastiParams.dataBits) << bitOffset)(nastiParams.dataBits - 1, 0),
+    Some((mask.pad(beatBytes) << offset)(beatBytes - 1, 0))
+  )
+  io.nasti.w.valid := state === sWriteData
+  io.nasti.b.ready := state === sWriteResponse
+
+  switch(state) {
+    is(sIdle) {
+      when(io.cpu.req.valid && (!io.cpu.req.bits.mask.orR || !io.cpu.abort)) {
+        addr := io.cpu.req.bits.addr
+        data := io.cpu.req.bits.data
+        mask := io.cpu.req.bits.mask
+        state := Mux(io.cpu.req.bits.mask.orR, sWriteAddress, sReadAddress)
+      }
+    }
+    is(sReadAddress) {
+      when(io.nasti.ar.fire) { state := sReadData }
+    }
+    is(sReadData) {
+      when(io.nasti.r.fire) {
+        readData := (io.nasti.r.bits.data >> bitOffset)(xlen - 1, 0)
+        state := sIdle
+      }
+    }
+    is(sWriteAddress) {
+      when(io.nasti.aw.fire) { state := sWriteData }
+    }
+    is(sWriteData) {
+      when(io.nasti.w.fire) { state := sWriteResponse }
+    }
+    is(sWriteResponse) {
+      when(io.nasti.b.fire) { state := sIdle }
+    }
+  }
+}
+
 class TileIO(xlen: Int, nastiParams: NastiBundleParameters) extends Bundle {
   val host = new HostIO(xlen)
   val nasti = new NastiBundle(nastiParams)
@@ -106,14 +178,23 @@ class Tile(val coreParams: CoreConfig, val nastiParams: NastiBundleParameters, v
     extends Module {
   val io = IO(new TileIO(coreParams.xlen, nastiParams))
   val core = Module(new Core(coreParams))
-  val icache = Module(new Cache(cacheParams, nastiParams, coreParams.xlen))
-  val dcache = Module(new Cache(cacheParams, nastiParams, coreParams.xlen))
   val arb = Module(new MemArbiter(nastiParams))
 
   io.host <> core.io.host
-  core.io.icache <> icache.io.cpu
-  core.io.dcache <> dcache.io.cpu
-  arb.io.icache <> icache.io.nasti
-  arb.io.dcache <> dcache.io.nasti
+  if (cacheParams.has_cache) {
+    val icache = Module(new Cache(cacheParams, nastiParams, coreParams.xlen))
+    val dcache = Module(new Cache(cacheParams, nastiParams, coreParams.xlen))
+    core.io.icache <> icache.io.cpu
+    core.io.dcache <> dcache.io.cpu
+    arb.io.icache <> icache.io.nasti
+    arb.io.dcache <> dcache.io.nasti
+  } else {
+    val ibridge = Module(new CoreBridge(nastiParams, coreParams.xlen))
+    val dbridge = Module(new CoreBridge(nastiParams, coreParams.xlen))
+    core.io.icache <> ibridge.io.cpu
+    core.io.dcache <> dbridge.io.cpu
+    arb.io.icache <> ibridge.io.nasti
+    arb.io.dcache <> dbridge.io.nasti
+  }
   io.nasti <> arb.io.nasti
 }

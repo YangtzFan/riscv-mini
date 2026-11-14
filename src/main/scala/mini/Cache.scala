@@ -27,7 +27,7 @@ class CacheModuleIO(nastiParams: NastiBundleParameters, addrWidth: Int, dataWidt
   val nasti = new NastiBundle(nastiParams)
 }
 
-case class CacheConfig(nWays: Int, nSets: Int, blockBytes: Int)
+case class CacheConfig(nWays: Int, nSets: Int, blockBytes: Int, has_cache: Boolean = true)
 
 class MetaData(tagLength: Int) extends Bundle {
   val tag = UInt(tagLength.W)

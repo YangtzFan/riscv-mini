@@ -12,14 +12,15 @@ object MiniConfig {
     Config(
       core = CoreConfig(
         xlen = xlen,
-        makeAlu = new AluArea(_),
+        makeAlu = new AluMul(_),
         makeBrCond = new BrCondArea(_),
         makeImmGen = new ImmGenWire(_)
       ),
       cache = CacheConfig(
         nWays = 1,
         nSets = 256,
-        blockBytes = 4 * (xlen / 8) // 4 * 32 bits = 16B
+        blockBytes = 4 * (xlen / 8), // 4 * 32 bits = 16B
+        has_cache = true
       ),
       nasti = NastiBundleParameters(
         addrBits = 32,
